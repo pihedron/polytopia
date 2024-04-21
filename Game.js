@@ -1,6 +1,7 @@
 // @ts-check
 
 import * as THREE from 'three'
+import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js'
 
 import Tile from './Tile.js'
 import Random from './Random.js'
@@ -8,7 +9,8 @@ import Unit from './Unit.js'
 
 export default class Game {
   /** @type {number} */
-  boardSize
+  boardSize = 16
+  offset = (this.boardSize - 1) / 2
 
   /** @type {number} */
   width
@@ -20,7 +22,10 @@ export default class Game {
   board = []
 
   /** @type {THREE.Group} */
-  map = new THREE.Group()
+  group = new THREE.Group()
+
+  /** @type {THREE.Object3D[][]} */
+  map = []
 
   /** @type {THREE.WebGLRenderer} */
   renderer
@@ -34,9 +39,25 @@ export default class Game {
   /** @type {THREE.Vector3} */
   pointer = new THREE.Vector3()
 
-  constructor() {
-    this.boardSize = 16
+  /** @type {THREE.Vector3} */
+  hovered = new THREE.Vector3()
 
+  /** @type {THREE.Object3D} */
+  // cursor = new THREE.Object3D()
+
+  /** @type {PointerLockControls} */
+  controls
+
+  /** @type {THREE.Raycaster} */
+  raycaster = new THREE.Raycaster()
+
+  /** @type {THREE.Vector2} */
+  mouse
+
+  /** @type {THREE.Object3D | null} */
+  selected
+
+  constructor() {
     this.width = window.innerWidth
     this.height = window.innerHeight
 
@@ -47,12 +68,28 @@ export default class Game {
     document.getElementById('canvas')?.appendChild(this.renderer.domElement)
 
     this.camera = new THREE.PerspectiveCamera(75, this.width / this.height, 0.1, 1000)
-    this.camera.position.set(0, 8, 12)
-    this.camera.rotation.set(0, 0, 0)
+    this.camera.position.set(0, this.boardSize / 2, this.boardSize / 2)
     this.scene.add(this.camera)
 
+    this.controls = new PointerLockControls(this.camera, this.renderer.domElement)
+    this.renderer.domElement.addEventListener('click', e => {
+      this.controls.lock()
+    })
+
+    // this.cursor.add(
+    //   new THREE.Mesh(
+    //     new THREE.RingGeometry(1 / 4, 1 / 2),
+    //     new THREE.MeshBasicMaterial({ color: 0xffffff, opacity: 0.5, transparent: true })
+    //   )
+    // )
+    // this.cursor.position.x = - this.offset
+    // this.cursor.position.z = - this.offset
+    // this.cursor.position.y = 1 / 2 + 1 / 256
+    // this.cursor.rotateX(-Math.PI / 2)
+    // this.scene.add(this.cursor)
+
     const light = new THREE.DirectionalLight(0xffffff, 2)
-    light.position.set(8, 8, 0)
+    light.position.set(this.boardSize, 8, 0)
     light.target.position.set(0, 0, 0)
     light.castShadow = true
     this.scene.add(light)
@@ -63,19 +100,19 @@ export default class Game {
     this.generateMap()
 
     this.mapTiles((tile, x, z) => {
+      const object = new THREE.Object3D()
       switch (tile.terrain) {
         case 'land': {
-          const object = new THREE.Object3D()
-          const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1).toNonIndexed(), new THREE.MeshPhongMaterial({ color: 0xffbb80, vertexColors: true }))
+          const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1).toNonIndexed(), new THREE.MeshPhongMaterial({ color: 0xffffff, vertexColors: true }))
           const colors = []
           let color = new THREE.Color();
           color.set(0xffffff)
           const positionAttribute = mesh.geometry.getAttribute('position')
           for (let i = 0; i < positionAttribute.count; i += 3) {
             if (i === 4 * 3 || i === 5 * 3) {
-              color.set(0x40ff40)
+              color.set(0x40dd40)
             } else {
-              color.set(0xffbb80)
+              color.set(0xdd8040)
             }
             colors.push(color.r, color.g, color.b)
             colors.push(color.r, color.g, color.b)
@@ -92,37 +129,30 @@ export default class Game {
             object.add(unit)
           }
           object.add(mesh)
-          object.position.x = x - this.boardSize / 2
-          object.position.z = z - this.boardSize / 2
           object.castShadow = true
-          this.map.add(object)
-          break;
+          object.receiveShadow = true
+          break
         }
         case 'sea': {
-          const object = new THREE.Object3D()
-          const geometry = new THREE.BoxGeometry(1, 0, 1)
-          const material = new THREE.MeshPhongMaterial({
+          // water surface
+          const water = new THREE.Mesh(new THREE.BoxGeometry(1, 0, 1), new THREE.MeshPhongMaterial({
             color: 0x00ffff,
             opacity: 0.5,
             transparent: true,
-          })
-          const mesh = new THREE.Mesh(geometry, material)
-          mesh.position.y = 3 / 8
+          }))
+          water.translateY(3 / 8)
+
+          // sea bed
           const sand = new THREE.Mesh(new THREE.BoxGeometry(1, 0.5, 1), new THREE.MeshPhongMaterial({ color: 0xffff80 }))
-          sand.position.y = - 1 / 4
+          sand.translateY(-1 / 4)
           sand.receiveShadow = true
-          sand.castShadow = true
-          object.add(mesh)
+
           object.add(sand)
-          object.position.x = x - this.boardSize / 2
-          object.position.z = z - this.boardSize / 2
+          object.add(water)
           object.receiveShadow = true
-          // object.castShadow = true
-          this.map.add(object)
-          break;
+          break
         }
         case 'ocean': {
-          const object = new THREE.Object3D()
           const geometry = new THREE.BoxGeometry(1, 0, 1)
           const material = new THREE.MeshPhongMaterial({
             color: 0x0000ff,
@@ -132,23 +162,24 @@ export default class Game {
           const mesh = new THREE.Mesh(geometry, material)
           mesh.position.y = 3 / 8
           object.add(mesh)
-          object.position.x = x - this.boardSize / 2
-          object.position.z = z - this.boardSize / 2
-          this.map.add(object)
-          break;
+          break
         }
         default:
-          break;
+          break
       }
+
+      object.position.x = x - this.offset
+      object.position.z = z - this.offset
+      this.group.add(object)
+      this.map[x][z] = object
+
       return tile
     })
 
-    this.map.position.set(0, 0, 0)
-    this.scene.add(this.map)
+    this.group.position.set(0, 0, 0)
+    this.scene.add(this.group)
 
-    // const n = 5000
-    // this.renderTicks(n, tick => this.camera.rotateX(-Math.PI / (4 * n)))
-    this.camera.rotateX(-Math.PI / 4)
+    this.addControls()
 
     this.update()
   }
@@ -157,13 +188,26 @@ export default class Game {
    * keeps the main game loop alive
    */
   update() {
-    requestAnimationFrame(() => this.update())
     this.width = window.innerWidth
     this.height = window.innerHeight
     this.renderer.setSize(this.width, this.height)
     this.camera.aspect = this.width / this.height
     this.camera.updateProjectionMatrix()
+
+    this.raycaster.setFromCamera(new THREE.Vector2(0, 0), this.camera)
+    const intersects = this.raycaster.intersectObjects(this.group.children, true)
+
+    // TODO: look at adding gsap for smoother animations
+    this.selected?.position.setY(0)
+    if (intersects.length > 0) {
+      const { object } = intersects[0]
+      this.selected = object.parent
+      this.selected?.position.setY(1 / 8)
+    } else {
+      this.selected = null
+    }
     this.renderer.render(this.scene, this.camera)
+    requestAnimationFrame(() => this.update())
   }
 
   /**
@@ -173,15 +217,13 @@ export default class Game {
    */
   renderTicks(n, callback) {
     for (let i = 0; i < n; i++) {
-      setTimeout(() => {
-        callback(i)
-        this.width = window.innerWidth
-        this.height = window.innerHeight
-        this.renderer.setSize(this.width, this.height)
-        this.camera.aspect = this.width / this.height
-        this.camera.updateProjectionMatrix()
-        this.renderer.render(this.scene, this.camera)
-      }, i / 10);
+      callback(i)
+      this.width = window.innerWidth
+      this.height = window.innerHeight
+      this.renderer.setSize(this.width, this.height)
+      this.camera.aspect = this.width / this.height
+      this.camera.updateProjectionMatrix()
+      this.renderer.render(this.scene, this.camera)
     }
   }
 
@@ -212,6 +254,7 @@ export default class Game {
     const r = new Random(0, 2)
     for (let x = 0; x < this.boardSize; x++) {
       this.board[x] = []
+      this.map[x] = []
       for (let z = 0; z < this.boardSize; z++) {
         let tile
         if (r.int() === 0) {
@@ -262,41 +305,37 @@ export default class Game {
   /**
    * limits the game cursor within board bounds
    */
-  adjustPointer() {
-    this.pointer.x = Math.max(0, Math.min(this.boardSize - 1, this.pointer.x))
-    this.pointer.z = Math.max(0, Math.min(this.boardSize - 1, this.pointer.z))
-  }
-  
-  selectTile() {
-    const tile = game.board[game.pointer.x][game.pointer.z]
-    console.log(tile)
+  // adjustPointer() {
+  //   this.pointer.x = Math.max(0, Math.min(this.boardSize - 1, this.pointer.x))
+  //   this.pointer.z = Math.max(0, Math.min(this.boardSize - 1, this.pointer.z))
+  // }
 
-    console.log(this.map.children)
+  // hoverTile() {
+  //   if (this.hovered.x === this.pointer.x && this.hovered.z == this.pointer.z) return
+  //   const tile = this.board[this.pointer.x][this.pointer.z]
+  //   const object = this.map[this.pointer.x][this.pointer.z]
+  //   this.cursor.position.x = this.pointer.x - this.offset
+  //   this.cursor.position.z = this.pointer.z - this.offset
+  //   this.hovered = new THREE.Vector3(this.pointer.x, this.pointer.y, this.pointer.z)
+  // }
+
+  addControls() {
+    const speed = 1 / 16
+    window.addEventListener('keydown', e => {
+      switch (e.key) {
+        case 'ArrowRight':
+          this.camera.position.x += speed
+        case 'ArrowLeft':
+          this.camera.position.x -= speed
+        case 'ArrowUp':
+          this.camera.position.z -= speed
+        case 'ArrowDown':
+          this.camera.position.z += speed
+        default:
+          break
+      }
+    })
   }
 }
 
 const game = new Game()
-window.addEventListener('keydown', e => {
-  switch (e.key) {
-    case 'ArrowRight':
-      game.pointer.x++
-      game.adjustPointer()
-      break;
-    case 'ArrowLeft':
-      game.pointer.x--
-      game.adjustPointer()
-      break;
-    case 'ArrowUp':
-      game.pointer.z--
-      game.adjustPointer()
-      break;
-    case 'ArrowDown':
-      game.pointer.z++
-      game.adjustPointer()
-      break;
-    default:
-      break;
-  }
-
-  game.selectTile()
-})
