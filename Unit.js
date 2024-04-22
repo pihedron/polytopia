@@ -18,15 +18,25 @@ export default class Unit {
   /** @type {number} */
   range
 
+  /** @type {number} */
+  x
+
+  /** @type {number} */
+  z
+
   /**
    * creates a military unit
-   * @param {number} team
-   * @param {number} attack
-   * @param {number} defense
-   * @param {number} movement
-   * @param {number} range
+   * @param {number} x
+   * @param {number} z
+   * @param {number} team tribe id
+   * @param {number} attack damage
+   * @param {number} defense retaliation and absorption
+   * @param {number} movement distance
+   * @param {number} range attack distance
    */
-  constructor(team, attack, defense, movement, range) {
+  constructor(x, z, team, attack, defense, movement, range) {
+    this.x = x
+    this.z = z
     this.team = team
     this.attack = attack
     this.defense = defense
@@ -39,20 +49,20 @@ export default class Unit {
    * @param {Tile[][]} tiles the board
    * @param {number} x
    * @param {number} z
-   * @param {Map<[number, number], Tile>} memo
-   * @returns {Map<[number, number], Tile>} the memo
+   * @param {Tile[]} memo
+   * @returns {Tile[]} the memo of tiles
    */
-  getAvailableTiles(tiles, x, z, memo = new Map(), distance = this.movement) {
+  getAvailableTiles(tiles, x, z, memo = [], distance = this.movement) {
     // index out of bounds
     if (x >= tiles.length) return memo
     if (x < 0) return memo
     if (z >= tiles[0].length) return memo
     if (z < 0) return memo
 
-    if (distance === 0) {
-      if (tiles[x][z].terrain === 'land') memo.set([x, z], tiles[x][z])
-      return memo
-    }
+    if (tiles[x][z].terrain !== 'land') return memo
+    else if (!memo.includes(tiles[x][z]) && (this.x !== x || this.z !== z)) memo.push(tiles[x][z])
+
+    if (distance === 0) return memo
 
     // TODO: do not decrease distance for roads
 
@@ -75,9 +85,11 @@ export default class Unit {
 export class Warrior extends Unit {
   /**
    * creates a warrior class unit
+   * @param {number} x
+   * @param {number} z
    * @param {number} team
    */
-  constructor(team) {
-    super(team, 1, 1, 1, 1)
+  constructor(x, z, team) {
+    super(x, z, team, 1, 1, 1, 1)
   }
 }

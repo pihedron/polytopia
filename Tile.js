@@ -14,11 +14,21 @@ export default class Tile {
   /** @type {Unit | null} */
   unit = null
 
+  /** @type {number} */
+  x
+
+  /** @type {number} */
+  z
+
   /**
    * creates a game tile
    * @param {Terrain} terrain the type of terrain
+   * @param {number } x
+   * @param {number } z
    */
-  constructor(terrain) {
+  constructor(terrain, x, z) {
     this.terrain = terrain
+    this.x = x
+    this.z = z
   }
 }

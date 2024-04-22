@@ -9,10 +9,27 @@ This project is an attempt to clone [The Battle of Polytopia](https://polytopia.
 > [!TIP]
 > To make development easier, this project uses [JSDoc](https://jsdoc.app) comments.
 
+## Tutorial
+
+- `↑` move camera forward
+- `↓` move camera backward
+- `click` select tile
+  - select unit
+  - move unit
+  - attack unit
+
 ### Features
 
 - [x] 3D rendering
-- [x] map generation
-- [ ] unit movement
-- [ ] unit combat
+- [x] movable camera
+- [ ] map generation
+  - [x] land, sea, ocean
+  - [ ] mountains
+  - [ ] villages
+- [ ] GUI
+- [ ] units
+  - [x] movement
+  - [ ] combat
+  - [ ] training
+- [ ] turns
 - [ ] tech tree

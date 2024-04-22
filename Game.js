@@ -6,6 +6,7 @@ import { PointerLockControls } from 'three/addons/controls/PointerLockControls.j
 import Tile from './Tile.js'
 import Random from './Random.js'
 import Unit from './Unit.js'
+import EventBinder from './EventBinder.js'
 
 export default class Game {
   /** @type {number} */
@@ -39,11 +40,17 @@ export default class Game {
   /** @type {THREE.Vector3} */
   pointer = new THREE.Vector3()
 
-  /** @type {THREE.Vector3} */
-  hovered = new THREE.Vector3()
+  /** @type {THREE.Object3D} */
+  cursor = new THREE.Object3D()
+
+  /** @type {THREE.Object3D[]} */
+  indicators = []
+
+  /** @type {Tile} */
+  tile
 
   /** @type {THREE.Object3D} */
-  // cursor = new THREE.Object3D()
+  object
 
   /** @type {PointerLockControls} */
   controls
@@ -56,6 +63,11 @@ export default class Game {
 
   /** @type {THREE.Object3D | null} */
   selected
+
+  /** @type {THREE.Vector3} */
+  direction = new THREE.Vector3()
+
+  velocity = 0
 
   constructor() {
     this.width = window.innerWidth
@@ -76,17 +88,16 @@ export default class Game {
       this.controls.lock()
     })
 
-    // this.cursor.add(
-    //   new THREE.Mesh(
-    //     new THREE.RingGeometry(1 / 4, 1 / 2),
-    //     new THREE.MeshBasicMaterial({ color: 0xffffff, opacity: 0.5, transparent: true })
-    //   )
-    // )
-    // this.cursor.position.x = - this.offset
-    // this.cursor.position.z = - this.offset
-    // this.cursor.position.y = 1 / 2 + 1 / 256
-    // this.cursor.rotateX(-Math.PI / 2)
-    // this.scene.add(this.cursor)
+    this.cursor.add(
+      new THREE.Mesh(
+        new THREE.RingGeometry(1 / 4, 1 / 2),
+        new THREE.MeshBasicMaterial({ color: 0xffffff, opacity: 0.5, transparent: true })
+      )
+    )
+    this.positionCursor()
+    this.cursor.position.y = 1 / 2 + 1 / 256
+    this.cursor.rotateX(-Math.PI / 2)
+    this.scene.add(this.cursor)
 
     const light = new THREE.DirectionalLight(0xffffff, 2)
     light.position.set(this.boardSize, 8, 0)
@@ -126,6 +137,7 @@ export default class Game {
             const unit = new THREE.Mesh(new THREE.BoxGeometry(0.5, height, 0.5), new THREE.MeshPhongMaterial({ color: 0x0000ff }))
             unit.position.y = (height + 1) / 2
             unit.castShadow = true
+            unit.name = 'unit'
             object.add(unit)
           }
           object.add(mesh)
@@ -194,18 +206,24 @@ export default class Game {
     this.camera.aspect = this.width / this.height
     this.camera.updateProjectionMatrix()
 
+    this.camera.getWorldDirection(this.direction)
+    this.camera.position.addScaledVector(this.direction, this.velocity)
+    this.velocity *= 3 / 4
+
     this.raycaster.setFromCamera(new THREE.Vector2(0, 0), this.camera)
     const intersects = this.raycaster.intersectObjects(this.group.children, true)
 
-    // TODO: look at adding gsap for smoother animations
-    this.selected?.position.setY(0)
     if (intersects.length > 0) {
       const { object } = intersects[0]
       this.selected = object.parent
-      this.selected?.position.setY(1 / 8)
+      this.pointer.x = (this.selected?.position.x ?? 0) + this.offset
+      this.pointer.z = (this.selected?.position.z ?? 0) + this.offset
     } else {
       this.selected = null
     }
+
+    this.positionCursor()
+
     this.renderer.render(this.scene, this.camera)
     requestAnimationFrame(() => this.update())
   }
@@ -258,9 +276,9 @@ export default class Game {
       for (let z = 0; z < this.boardSize; z++) {
         let tile
         if (r.int() === 0) {
-          tile = new Tile('land')
+          tile = new Tile('land', x, z)
         } else {
-          tile = new Tile('ocean')
+          tile = new Tile('ocean', x, z)
         }
         this.board[x][z] = tile
       }
@@ -277,11 +295,11 @@ export default class Game {
       for (let z = 0; z < this.boardSize; z++) {
         if (this.board[x][z].terrain === 'ocean') {
           if (this.getAdjacentTiles(x, z).map(tile => tile.terrain).includes('land')) {
-            this.board[x][z] = new Tile('sea')
+            this.board[x][z] = new Tile('sea', x, z)
           }
         } else {
           if (unitCount === 0) {
-            const unit = new Unit(0, 1, 1, 1, 1)
+            const unit = new Unit(x, z, 0, 1, 1, 1, 1)
             this.board[x][z].unit = unit
             unitCount++
           }
@@ -302,37 +320,73 @@ export default class Game {
     }
   }
 
-  /**
-   * limits the game cursor within board bounds
-   */
-  // adjustPointer() {
-  //   this.pointer.x = Math.max(0, Math.min(this.boardSize - 1, this.pointer.x))
-  //   this.pointer.z = Math.max(0, Math.min(this.boardSize - 1, this.pointer.z))
-  // }
-
-  // hoverTile() {
-  //   if (this.hovered.x === this.pointer.x && this.hovered.z == this.pointer.z) return
-  //   const tile = this.board[this.pointer.x][this.pointer.z]
-  //   const object = this.map[this.pointer.x][this.pointer.z]
-  //   this.cursor.position.x = this.pointer.x - this.offset
-  //   this.cursor.position.z = this.pointer.z - this.offset
-  //   this.hovered = new THREE.Vector3(this.pointer.x, this.pointer.y, this.pointer.z)
-  // }
+  positionCursor() {
+    this.cursor.position.x = this.pointer.x - this.offset
+    this.cursor.position.z = this.pointer.z - this.offset
+  }
 
   addControls() {
-    const speed = 1 / 16
-    window.addEventListener('keydown', e => {
-      switch (e.key) {
-        case 'ArrowRight':
-          this.camera.position.x += speed
-        case 'ArrowLeft':
-          this.camera.position.x -= speed
-        case 'ArrowUp':
-          this.camera.position.z -= speed
-        case 'ArrowDown':
-          this.camera.position.z += speed
-        default:
-          break
+    const binder = new EventBinder()
+
+    /** @type {{ key: string, handle: (e: Event) => void }[]} */
+    const cases = [
+      {
+        key: 'ArrowUp',
+        handle: e => {
+          this.velocity = 1
+        }
+      },
+      {
+        key: 'ArrowDown',
+        handle: e => {
+          this.velocity = -1
+        }
+      },
+    ]
+
+    binder.bindCases('keydown', cases)
+    binder.bind('click', e => {
+      if (!this.controls.isLocked) return
+      if (this.indicators.length > 0) {
+        this.indicators.forEach(indicator => {
+          if (indicator.position.x + this.offset === this.pointer.x && indicator.position.z + this.offset === this.pointer.z) {
+            this.board[this.pointer.x][this.pointer.z].unit = this.tile.unit
+            const unit = this.board[this.pointer.x][this.pointer.z].unit
+            if (unit) {
+              unit.x = this.pointer.x
+              unit.z = this.pointer.z
+            }
+            const unitMesh = this.object.children.find(child => child.name === 'unit')
+            if (!unitMesh) throw 'a unit disappeared'
+            this.map[this.pointer.x][this.pointer.z].add(unitMesh)
+            this.tile.unit = null
+          }
+          this.scene.remove(indicator)
+        })
+        this.indicators = []
+        return
+      }
+      this.tile = this.board[this.pointer.x][this.pointer.z]
+      this.object = this.map[this.pointer.x][this.pointer.z]
+      if (this.tile.unit) {
+        this.indicators.forEach(indicator => this.scene.remove(indicator))
+        this.indicators = []
+        const tiles = this.tile.unit.getAvailableTiles(this.board, this.pointer.x, this.pointer.z)
+        tiles.forEach(tile => {
+          const indicator = new THREE.Object3D()
+          indicator.add(
+            new THREE.Mesh(
+              new THREE.RingGeometry(1 / 4, 1 / 2),
+              new THREE.MeshBasicMaterial({ color: 0x0000ff, opacity: 1 / 2, transparent: true }),
+            )
+          )
+          indicator.position.x = tile.x - this.offset
+          indicator.position.z = tile.z - this.offset
+          indicator.position.y = 1 / 2 + 1 / 256
+          indicator.rotateX(-Math.PI / 2)
+          this.scene.add(indicator)
+          this.indicators.push(indicator)
+        })
       }
     })
   }
