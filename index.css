@@ -5,3 +5,14 @@ body {
   color: white;
   overflow: hidden;
 }
+
+#crosshair {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 4px;
+  height: 4px;
+  background-color: white;
+  border-radius: 2px;
+  transform: translate(-50%, -50%);
+}
