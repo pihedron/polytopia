@@ -1,6 +1,8 @@
 // @ts-check
 
 import * as THREE from 'three'
+
+// @ts-ignore
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js'
 
 import Tile from './Tile.js'
@@ -67,6 +69,10 @@ export default class Game {
   /** @type {THREE.Vector3} */
   direction = new THREE.Vector3()
 
+  /** @type {Unit[][]} */
+  tribeUnits = [[], []] // 2 tribes for now
+
+  /** @type {number} */
   velocity = 0
 
   constructor() {
@@ -77,6 +83,7 @@ export default class Game {
     this.renderer.setSize(this.width, this.height)
     this.renderer.setClearColor(0x000000, 0)
     this.renderer.shadowMap.enabled = true
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
     document.getElementById('canvas')?.appendChild(this.renderer.domElement)
 
     this.camera = new THREE.PerspectiveCamera(75, this.width / this.height, 0.1, 1000)
@@ -100,12 +107,12 @@ export default class Game {
     this.scene.add(this.cursor)
 
     const light = new THREE.DirectionalLight(0xffffff, 2)
-    light.position.set(this.boardSize, 8, 0)
+    light.position.set(this.boardSize, this.boardSize, 0)
     light.target.position.set(0, 0, 0)
     light.castShadow = true
     this.scene.add(light)
 
-    const ambientLight = new THREE.AmbientLight(0xffffff)
+    const ambientLight = new THREE.AmbientLight(0xffffff, 1)
     this.scene.add(ambientLight)
 
     this.generateMap()
@@ -130,7 +137,7 @@ export default class Game {
             colors.push(color.r, color.g, color.b)
           }
           mesh.geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
-          mesh.receiveShadow = true
+          // mesh.receiveShadow = true
           mesh.castShadow = true
           if (tile.unit) {
             const height = 1
@@ -299,14 +306,22 @@ export default class Game {
             this.board[x][z] = new Tile('sea', x, z)
           }
         } else {
-          if (unitCount === 0) {
-            const unit = new Warrior(x, z, 0)
-            this.board[x][z].unit = unit
-            unitCount++
-          } else if (unitCount === 1) {
-            const unit = new Archer(x, z, 1)
-            this.board[x][z].unit = unit
-            unitCount++
+          if (!this.getAdjacentTiles(x, z).map(tile => tile.terrain).includes('land')) {
+            this.board[x][z] = new Tile('ocean', x, z)
+          } else {
+            if (unitCount === 0) {
+              const unit = new Warrior(x, z, 0)
+              unit.id = this.tribeUnits[unit.team].length
+              this.board[x][z].unit = unit
+              this.tribeUnits[unit.team].push(unit)
+              unitCount++
+            } else if (unitCount === 1) {
+              const unit = new Archer(x, z, 1)
+              unit.id = 0
+              this.board[x][z].unit = unit
+              this.tribeUnits[unit.team].push(unit)
+              unitCount++
+            }
           }
         }
       }
@@ -370,7 +385,8 @@ export default class Game {
             const attackerKilled = this.tile.unit && this.tile.unit.health <= 0
             const defenderKilled = unit && unit.health <= 0
             if (!attackerKilled && defenderKilled && this.tile.unit.range === 1 || !unit) {
-              unit = this.tile.unit
+              if (unit) this.tribeUnits[unit.team].splice(this.tile.unit.id, 1)
+              unit = this.tile.unit // dereferencing of defending unit
               unit.x = this.pointer.x
               unit.z = this.pointer.z
               this.board[this.pointer.x][this.pointer.z].unit = unit
@@ -381,10 +397,12 @@ export default class Game {
               this.map[this.pointer.x][this.pointer.z].add(attacker)
               this.tile.unit = null
             } else if (!attackerKilled && defenderKilled) {
+              if (unit) this.tribeUnits[unit.team].splice(this.tile.unit.id, 1)
               this.board[this.pointer.x][this.pointer.z].unit = null
               const defender = this.map[this.pointer.x][this.pointer.z].children.find(child => child.name === 'unit')
               if (defender) this.map[this.pointer.x][this.pointer.z].remove(defender)
             } else if (attackerKilled) {
+              this.tribeUnits[this.tile.unit.team].splice(this.tile.unit.id, 1)
               this.tile.unit = null
               const attacker = this.object.children.find(child => child.name === 'unit')
               if (!attacker) throw 'a unit disappeared'

@@ -4,6 +4,9 @@ import Tile from './Tile.js'
 
 export default class Unit {
   /** @type {number} */
+  id
+
+  /** @type {number} */
   team
 
   /** @type {number} */
