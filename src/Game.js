@@ -419,6 +419,7 @@ export default class Game {
       if (this.tile.unit) {
         this.indicators.forEach(indicator => this.scene.remove(indicator))
         this.indicators = []
+        if (this.tile.unit.disabled) return
         const tiles = [...this.tile.unit.getAvailableTiles(this.board, this.pointer.x, this.pointer.z), ...this.tile.unit.getAttackableTiles(this.board, this.pointer.x, this.pointer.z)]
         tiles.forEach(tile => {
           const indicator = new THREE.Object3D()
